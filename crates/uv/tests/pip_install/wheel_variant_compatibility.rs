@@ -97,6 +97,7 @@ fn refresh_incompatible_variant_wheel() -> Result<()> {
     let variant = null_variant().to_string();
     let (filename, wheel) = WheelBuilder::new(&"ok".parse()?, &"1.0.0".parse()?)
         .tag("py3-none-win_amd64")
+        .requires(&["child @ file:///missing/child-1.0-py3-none-any.whl".parse()?])
         .variant(&"null".parse()?, &variant)
         .build();
     let wheel_path = context.temp_dir.child(filename);
