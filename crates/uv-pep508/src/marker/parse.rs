@@ -6,7 +6,7 @@ use uv_pep440::{Version, VersionPattern, VersionSpecifier};
 
 use crate::cursor::Cursor;
 use crate::marker::MarkerValueExtra;
-use crate::marker::lowering::CanonicalMarkerListPair;
+use crate::marker::lowering::{CanonicalMarkerListPair, VariantMarkerMember};
 use crate::marker::tree::{ContainerOperator, MarkerValueList};
 use crate::{
     ExtraOperator, MarkerExpression, MarkerOperator, MarkerTree, MarkerValue, MarkerValueString,
@@ -105,6 +105,24 @@ fn parse_marker_value<T: Pep508Url>(
                 !char.is_whitespace() && !matches!(char, '>' | '=' | '<' | '!' | '~' | ')')
             });
             let key = cursor.slice(start, len);
+            if !cursor.allow_variant_markers
+                && matches!(
+                    key,
+                    "variant_label"
+                        | "variant_namespaces"
+                        | "variant_features"
+                        | "variant_properties"
+                )
+            {
+                return Err(Pep508Error {
+                    message: Pep508ErrorSource::String(format!(
+                        "The marker `{key}` is only allowed in dependency specifiers"
+                    )),
+                    start,
+                    len,
+                    input: cursor.to_string(),
+                });
+            }
             MarkerValue::from_str(key)
                 .map_err(|_| Pep508Error {
                     message: Pep508ErrorSource::String(format!(
@@ -314,6 +332,15 @@ pub(crate) fn parse_marker_key_op_value<T: Pep508Url>(
                             }
                         })?;
                     let pair = match key {
+                        MarkerValueList::VariantNamespaces => CanonicalMarkerListPair::Variant(
+                            VariantMarkerMember::Namespace(l_string.to_string()),
+                        ),
+                        MarkerValueList::VariantFeatures => CanonicalMarkerListPair::Variant(
+                            VariantMarkerMember::Feature(normalize_variant_member(&l_string)),
+                        ),
+                        MarkerValueList::VariantProperties => CanonicalMarkerListPair::Variant(
+                            VariantMarkerMember::Property(normalize_variant_member(&l_string)),
+                        ),
                         // `'...' in extras`
                         MarkerValueList::Extras => match ExtraName::from_str(&l_string) {
                             Ok(name) => CanonicalMarkerListPair::Extras(name),
@@ -539,6 +566,19 @@ fn parse_inverted_version_expr(
     };
 
     Some(MarkerExpression::Version { key, specifier })
+}
+
+/// PEP 825 ignores whitespace adjacent to the `::` separators.
+fn normalize_variant_member(member: &str) -> String {
+    let mut normalized = String::with_capacity(member.len());
+    let mut remaining = member;
+    while let Some((component, rest)) = remaining.split_once("::") {
+        normalized.push_str(component.trim_end());
+        normalized.push_str("::");
+        remaining = rest.trim_start();
+    }
+    normalized.push_str(remaining);
+    normalized
 }
 
 /// Creates an instance of [`MarkerExpression::Extra`] with the given values, falling back to

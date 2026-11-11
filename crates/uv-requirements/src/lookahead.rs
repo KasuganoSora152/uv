@@ -216,7 +216,7 @@ impl<'a, Context: BuildContext> LookaheadResolver<'a, Context> {
         };
 
         // Only follow dependencies from a direct variant wheel that the solver can select.
-        if let Dist::Built(wheel) = &dist
+        let variant = if let Dist::Built(wheel) = &dist
             && let Some(label) = wheel.wheel_filename().variant()
             && (!metadata.requires_dist.is_empty()
                 || !metadata.dependency_groups.is_empty()
@@ -247,7 +247,10 @@ impl<'a, Context: BuildContext> LookaheadResolver<'a, Context> {
             {
                 return Ok(None);
             }
-        }
+            Some(content.marker_environment(label, &supported))
+        } else {
+            None
+        };
 
         // Respect recursive extras by propagating the source extras to the dependencies.
         let package = metadata.name.clone();
@@ -278,13 +281,13 @@ impl<'a, Context: BuildContext> LookaheadResolver<'a, Context> {
             })
             .collect();
 
-        // Return the requirements from the metadata.
         Ok(Some(RequestedRequirements::new(
             package,
             version,
             requirement.extras,
             requires_dist,
             direct,
+            variant,
         )))
     }
 }
